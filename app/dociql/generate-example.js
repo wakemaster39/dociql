@@ -34,8 +34,9 @@ function generateQueryInternal(field, expandGraph, arguments, depth, typeCounts 
         returnType = returnType.ofType;
     }
 
+
+
     if (returnType.getFields) {
-        var subQuery = null;
         const expandedField = expandGraph.find(_ => _.field == field.name)
 
         if (!expandedField)
@@ -44,37 +45,65 @@ function generateQueryInternal(field, expandGraph, arguments, depth, typeCounts 
                 args: fieldArgs
             };
 
-        if (depth > 1) {
-            const typeKey = `${field.name}->${returnType.name}`;
-            if (typeCounts.includes(typeKey)) {
-                subQuery = space + "  ...Recursive" + returnType.name + "Fragment\n"
-            }
-            typeCounts.push(typeKey)
-        }
+        queryStr += generateSubQuery(field, returnType, fieldArgs, expandGraph, depth, typeCounts)
+    }
+    else if (returnType._types){
+        const expandedField = expandGraph.find(_ => _.field == field.name)
 
-        var childFields = returnType.getFields();
-        var keys = Object.keys(childFields);
-        const toExpand = expandGraph.map(_ => _.field);
-        const toSelect = expandedField ? expandedField.select : null;
+        if (!expandedField)
+            return {
+                query: "",
+                args: fieldArgs
+            };
 
-        keys = toSelect ? keys.filter(key => toSelect.includes(key) || toExpand.includes(key)) : keys;
-
-        subQuery = subQuery || keys.map(key => {
-            return generateQueryInternal(
-                childFields[key],
-                expandGraph,
-                fieldArgs,
-                depth + 1,
-                typeCounts).query
-        }).join("");
-
-        queryStr += `{\n${subQuery}${space}}`
+        const expandedFieldIndex = expandGraph.findIndex(_ => _.field == field.name)
+        queryStr += `{`
+        returnType._types.forEach(type => {
+            const qq = [...expandGraph]
+            qq[expandedFieldIndex] = {field: field.name, select: qq[expandedFieldIndex] ? (qq[expandedFieldIndex].select ?? {})[type.name] : null}
+            const subQuery = generateSubQuery(field, type, fieldArgs, qq, depth + 1, typeCounts)
+            if (subQuery !== '{\n    }') //An Empty response
+                queryStr += `\n${space}  ... on ${type.name}${subQuery}`
+        })
+        queryStr += `\n${space}}`
     }
 
     return {
         query: queryStr + "\n",
         args: fieldArgs
     };
+}
+
+function generateSubQuery(field, returnType, fieldArgs, expandGraph, depth, typeCounts){
+    const space = '  '.repeat(depth)
+    var subQuery = null;
+    const expandedField = expandGraph.find(_ => _.field == field.name)
+
+    if (depth > 1) {
+        const typeKey = `${field.name}->${returnType.name}`;
+        if (typeCounts.includes(typeKey)) {
+            subQuery = space + "  ...Recursive" + returnType.name + "Fragment\n"
+        }
+        typeCounts.push(typeKey)
+    }
+
+    var childFields = returnType.getFields();
+    var keys = Object.keys(childFields);
+    const toExpand = expandGraph.map(_ => _.field);
+    const toSelect = expandedField ? expandedField.select : null;
+
+    keys = toSelect ? keys.filter(key => toSelect.includes(key) || toExpand.includes(key)) : keys;
+
+    subQuery = subQuery || keys.map(key => {
+        return generateQueryInternal(
+            childFields[key],
+            expandGraph,
+            fieldArgs,
+            depth + 1,
+            typeCounts).query
+    }).join("");
+
+    return `{\n${subQuery}${space}}`
 }
 
 function generateExampleSchema(name, type, expandGraph, depth) {

@@ -2,15 +2,10 @@ const generateExample = require("./generate-example")
 const convertTypeToSchema = require("./convert-type")
 
 function getExpandField(expandNotation) {
-    const subExpandIndex = expandNotation.indexOf("(")
-
-    var result = {
-        field: subExpandIndex == -1 ? expandNotation : expandNotation.substring(0, subExpandIndex),
-        select: subExpandIndex == -1 ?
-            null :
-            expandNotation.substring(subExpandIndex + 1, expandNotation.length - 1).split(" ")
+    result = []
+    for (const key in expandNotation){
+        result.push({field: key, select: expandNotation[key]})
     }
-
     return result;
 }
 
@@ -32,12 +27,19 @@ module.exports = function (domains, graphQLSchema) {
         queryTokens.forEach((token, i) => {
             if (i != 0)
                 target = target.getFields()[token]
-        });        
+        });
 
-        const expandFields = usecase.expand ?
-            usecase.expand.split(",").map(getExpandField) :
-            []; // [] - expand nothing
-        const selectFields = usecase.select ? usecase.select.split(" ") : null; // null = select all                
+        const expandFields = usecase.expand ? getExpandField(usecase.expand) : []; // [] - expand nothing
+        let selectFields = null; // null = select all
+        if (usecase.select) {
+            if (typeof usecase.select === "object" ){
+                selectFields = {}
+                Object.keys(usecase.select).map(key => selectFields[key] = usecase.select[key])
+            }
+            else{
+                selectFields = usecase.select
+            }
+        }
         expandFields.push({
             field: target.name,
             select: selectFields
@@ -62,8 +64,8 @@ module.exports = function (domains, graphQLSchema) {
                 {
                     type: "object",
                     properties: args.reduce((cur, next) => {
-                        cur[next.name] = Object.assign({}, next.schema)     
-                        return cur;                   
+                        cur[next.name] = Object.assign({}, next.schema)
+                        return cur;
                     }, {})
                 }
         }

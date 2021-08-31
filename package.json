@@ -7,7 +7,7 @@
     "dociql": "bin/dociql.js"
   },
   "scripts": {
-    "build": "node bin/dociql -l eevee.png config.yml",
+    "build": "node bin/dociql config.yml",
     "publish": "node bin/dociql -l eevee.png -t docs config.yml",
     "test": "nyc --lines 85 --reporter=lcovonly --reporter=text-summary mocha && node bin/dociql -l eevee.png config.yml",
     "develop": "dociql -d",
