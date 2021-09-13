@@ -16,6 +16,15 @@ function generateQueryInternal(field, expandGraph, arguments, depth, typeCounts 
     const space = '  '.repeat(depth)
     var queryStr = space + field.name
 
+    expandGraph = expandGraph.map(x => {
+        const result = {...x}
+        if(result.depth !== undefined)
+            result.depth = result.depth - 1
+        if (result.depth < 0)
+            return null
+        return result
+    }).filter(x => x)
+
     // It's important to clone the array here. Otherwise we would
     // be pushing arguments into the array passed by reference,
     // which results in arguments from one query being incorrectly
@@ -45,7 +54,13 @@ function generateQueryInternal(field, expandGraph, arguments, depth, typeCounts 
                 args: fieldArgs
             };
 
-        queryStr += generateSubQuery(field, returnType, fieldArgs, expandGraph, depth, typeCounts)
+        const subQuery = generateSubQuery(field, returnType, fieldArgs, expandGraph, depth, typeCounts)
+        if (subQuery === null)
+            return {
+                query: "",
+                args: fieldArgs
+            };
+        queryStr += subQuery
     }
     else if (returnType._types){
         const expandedField = expandGraph.find(_ => _.field == field.name)
@@ -62,6 +77,10 @@ function generateQueryInternal(field, expandGraph, arguments, depth, typeCounts 
             const qq = [...expandGraph]
             qq[expandedFieldIndex] = {field: field.name, select: qq[expandedFieldIndex] ? (qq[expandedFieldIndex].select ?? {})[type.name] : null}
             const subQuery = generateSubQuery(field, type, fieldArgs, qq, depth + 1, typeCounts)
+
+            // Just kill out recursive sub queries
+            if(subQuery === null)
+                return;
             if (subQuery !== '{\n    }') //An Empty response
                 queryStr += `\n${space}  ... on ${type.name}${subQuery}`
         })
@@ -88,9 +107,25 @@ function generateSubQuery(field, returnType, fieldArgs, expandGraph, depth, type
     }
 
     var childFields = returnType.getFields();
-    var keys = Object.keys(childFields);
+    let toSelect = expandedField ? expandedField.select : null;
+    if (toSelect){
+        expandGraph = [...expandGraph]
+        toSelect.forEach(x => {
+            if(typeof x === 'object'){
+                const name = Object.keys(x)[0];
+                expandGraph.push({field: name, select: x[name], depth: 1})
+            }
+        })
+        toSelect = toSelect.filter(x => typeof x !== "object")
+        if (toSelect.length == 0)
+            toSelect = null;
+    }
     const toExpand = expandGraph.map(_ => _.field);
-    const toSelect = expandedField ? expandedField.select : null;
+
+    if(toSelect && toSelect.find(x => x === '__typename')){
+        childFields = {"__typename": {name: "__typename", args: [], type: {"name": 'String'}}, ...childFields}
+    }
+    var keys = Object.keys(childFields);
 
     keys = toSelect ? keys.filter(key => toSelect.includes(key) || toExpand.includes(key)) : keys;
 

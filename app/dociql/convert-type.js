@@ -1,4 +1,4 @@
-const {    
+const {
     GraphQLScalarType,
     GraphQLNonNull,
     GraphQLList
@@ -9,7 +9,8 @@ const SCALARS = {
     Float: 'number',
     String: 'string',
     Boolean: 'boolean',
-    ID: 'string'
+    ID: 'string',
+    FQDN: 'string',
 };
 
 function convertType(type) {
@@ -17,18 +18,21 @@ function convertType(type) {
         return Object.assign(convertType(type.ofType), {
             required: true
         });
-    if (type instanceof GraphQLList) {        
+    if (type instanceof GraphQLList) {
         return {
             type: 'array',
             items: convertType(type.ofType)
         }
     }
     if (type instanceof GraphQLScalarType)
+        if (!SCALARS[type.name]){
+            return {type: 'string'}
+        }
         return {
             type: SCALARS[type.name]
         };
-    
-    return { $ref: `#/definitions/${type.name}`};         
+
+    return { $ref: `#/definitions/${type.name}`};
 }
 
 module.exports = convertType

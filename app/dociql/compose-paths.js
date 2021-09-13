@@ -32,12 +32,12 @@ module.exports = function (domains, graphQLSchema) {
         const expandFields = usecase.expand ? getExpandField(usecase.expand) : []; // [] - expand nothing
         let selectFields = null; // null = select all
         if (usecase.select) {
-            if (typeof usecase.select === "object" ){
-                selectFields = {}
-                Object.keys(usecase.select).map(key => selectFields[key] = usecase.select[key])
+            if (Array.isArray(usecase.select)){
+                selectFields = usecase.select
             }
             else{
-                selectFields = usecase.select
+                selectFields = {}
+                Object.keys(usecase.select).map(key => selectFields[key] = usecase.select[key])
             }
         }
         expandFields.push({

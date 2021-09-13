@@ -1,59 +1,113 @@
+---
 # To fetch schema from
 introspection: http://localhost:5000/graphql/
 
-servers: # same format as for OpenAPI Specification
+servers:  # same format as for OpenAPI Specification
   - url: https://cx-labs-stg.cisco.com/graphql/
     description: Staging
   - url: https://cx-labs.cisco.com/graphql/
     description: Prod
 
-info: # same format as for OpenAPI Specification
-    title: CX Labs API Documentation
-    description: |
-      CX Labs API is a GraphQL endpoint providing the ability to query and modify all fields and values that
-      are provided in our UI. The API is protected by Cisco SSO and is able to be queried using standard OAuth2
-      workflows.
+info:  # same format as for OpenAPI Specification
+  title: CX Labs API Documentation
+  description: |
+    CX Labs API is a GraphQL endpoint providing the ability to query and modify all fields and values that
+    are provided in our UI. The API is protected by Cisco SSO and is able to be queried using standard OAuth2
+    workflows. For an introduction to the basics and concepts of graphic, an introduction can be found
+    [here](https://graphql.org/learn/).
 
-      An example script of executing a query against the api can be found [here](https://www.google.com) and an oauth
-      client id/secret pair can be generated [here](https://wampmtui.cloudapps.cisco.com/loggedIn#/oauth/clients/0/10/).
+    An example script of executing a query against the api can be found [here](https://www.google.com) and an oauth
+    client id/secret pair can be generated [here](https://wampmtui.cloudapps.cisco.com/loggedIn#/oauth/clients/0/10/).
+
+    When viewing and exploring out documentation, actions are grouped by prefix to the different queries and mutations.
+    For example, when working with assets you will find all are prefixed with `asset`. This allows for easy
+    exploration for find all available calls for a given unit of work.
+
+    # Conventions
+
+    ## Null values
+
+    For a string that is not marked as required: `"AAA"` `""` and `null` are all different values.
+    In our API we leverage this fact heavily. For return objects with scalar fields, a `null` value means that there is
+    no value stored. For complex fields that return an object or a list, an empty object `{}` or an empty list `[]` means
+    there is no data to return, while a `null` value means that you do not have permissions to retrieve the results.
+
+    This `null` value if important on complex return objects and lists because queries and return objects can traverse the
+    graph and it is possible to ask for data you do not have permissions to view. We represent this as null rather than
+    erroring. The same extends to a list where a list might return a sequence of objects but some of those objects might
+    be `null`. This means that there is data present and stored, but you do not have the permissions to know what it is.
+
+    ## Mutations and Ternary Data
+
+    In GraphQL, mutations support a ternary data format. For example with a string that is not required, `"AAAA"`, `null`
+    and a value not being passed in and the three states of data. In mutations we leverage this fact very heavily
+    with update mutation. When updating an object, almost every field is marked as optional, this means you can pass
+    in only the fields you wish to update and ignore all other fields. This allows us to have a functional equivalent
+    to a `PUT` action in the RESTful world.
+
+    To determine which fields are actually require a
+    value and which fields accept `null`, you will need to reference the create mutation for the object you are attempting
+    to modify. There is work being done to extend the GraphQL spec to provide better indication of this in the future
+    but at this time the work is not complete.
+
+    The benefit of this decision means that there are not custom mutations required for updating limited sets of
+    fields. For example, when [modifying a workspace](#operation-modify_workspace-post) all the fields are able to be
+    modified in a single call. If you wish to change its name, you can use the provided example query and a
+    variables section of `{"name": "new name"}`, if you wish to modify the allowed users on a workspace you can leverage
+    that same mutation an provide a variables section of `{"authorizedCecs": ["user1", "user2", ...]}`.
+
+    ## `my` Prefix
+
+    The prefix of `my` thought the graph is used the represent information in the context of the user making the call.
+    For instance, when working with an object that has permissions the `myPermissions` field will return an array of enums
+    signifying the permisssions the calling user has on that object. For queries, such [workspace search](#operation-workspace_search-post)
+    the `myWorkspaces` filter provides a means to filter out all workspaces that you are an allowed user on.
+
+    ## Pagination
+
+    Pagination is a common mechanism used in our API, fields are paginated when there is a possibility of infinite
+    growth even though today there might be a limited number of results available. When working with paginated fields,
+    the `pageInfo` field provides details on the number of results and the current section of those results that were
+    returned.
+
+    The `results` field contains the results of the field in the quantity specified by the `pageInfo` field.
+
+    The `errors` field contains any errors that occured when attempting to query the results. Typically if a there
+    are any errors the `results` field will also be an empty list as the API failed to query the results. See the
+    Error Handing section for more details.
+
+    ## Error Handling
+
+    In GraphQL, there is a default `errors` field that exists at the same level as the `data` field in the response
+    object.
 
 domains:
-  - name: Asset Automation
-    description: |
-      Automation is an asynchronous operation that takes two forms. The first is triggering a task,
-      these triggers are mutations like [Clear Lines](#operation-clear_lines-post). The second part of the operation
-      is fetching the status of the task while it completes with [Task Status](#operation-task_status-post).
+  - name: Reserving Equipment
     usecases:
-      # - name: Task Status
-      #   description: QQQ
-      #   query: query.task
-      - name: Clear Lines # Operation name
-        description: QQQ Markdown enabled description for operation # Opearation description
-        query: mutation.assetClearLines
-        select:
-          Task:
-            - id
+      - name: Asset Search
+        description: |
+          Asset search can be used to find any gear located anywhere in our lab environment, it offers a number
+          of sorts and filters to aid in finding the equipment you are looking for. When using asset search to
+          find gear for reservations, there are a couple of additional constraints you need to be aware of when submitting
+          that equipment for a reservation.
+
+          1. The pod assets and child assets are not directly reservable. We only support the reservation of equipment
+          that is at the top level. This ensures that someone does not attempt to reserve gear that is part of another
+          checkout and being used because it is in the chassis. To aid in simplifying this process of what needs to be
+          reserved, the field `topLevelParent` can be used to know which field is reservable
+
+          2.`availabilityWindow` should be ussed to filter gear that is available during the time window you are looking
+          for. This filter ensures that there are no conflicts and that your equipment will be available for the requested duration.
+
+          3. Not all gear in all labs will be visibile. Asset search respects the permissions of pools and limits what
+          gear is available for the requester to view. If some asset is controlled in a team pool, and the requester is
+          not apart of it, they will never be able to see that equipment.
+        query: query.assetSearch
         expand:
-          errors:
-            - fieldName
-            - errorMessage
-      - name: Power Commands # Operation name
-        description: QQQ Markdown enabled description for operation # Opearation description
-        query: mutation.assetPowerActions # Query example - fetching single field
-#        select: name # select only specific sub fields. By default - all are selected
-#        expand: ports #field3(sub1, sub2, sub3),field4 # go deep by expanding specific fields.
-  - name: AAAAA
-    description: QQQQQ
-#    description: |
-#      Automation is an asynchronous operation that takes two forms. The first is triggering a task,
-#      these triggers are mutations like #Clear Line. The second part of the operation is fetching the status
-#      of the task while it completes.
-    usecases:
-      - name: BBBBB # Operation name
-        description: QQQ Markdown enabled description for operation # Opearation description
-        query: query.automatrixDomainGetAllByProviderId # Query example - fetching single field
-      - name: CCCCC # Operation name
-        description: QQQ Markdown enabled description for operation # Opearation description
-        query: query.automatrixDomainGetAllByProviderId # Query example - fetching single field
-#        select: name # select only specific sub fields. By default - all are selected
-#        expand: ports #field3(sub1, sub2, sub3),field4 # go deep by expanding specific fields.
+          pageInfo:
+          results:
+            - product:
+              - id
+            - topLevelParent:
+              - __typename
+              - id
